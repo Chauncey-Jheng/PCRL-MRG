@@ -291,9 +291,17 @@ The simplest approach is to pass paths as CLI arguments (e.g. `--model_name`, `-
 If you find this work useful, please cite:
 
 ```bibtex
-@inproceedings{pcrl-mrg-2024,
-  title     = {See Detail Say Clear: Towards Brain CT Report Generation via Pathological Clue-driven Representation Learning},
-  booktitle = {Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
-  year      = {2024}
+@inproceedings{zheng-etal-2024-see,
+    title     = "See Detail Say Clear: Towards Brain {CT} Report Generation via Pathological Clue-driven Representation Learning",
+    author    = "Zheng, Chengxin and Ji, Junzhong and Shi, Yanzhao and Zhang, Xiaodan and Qu, Liangqiong",
+    editor    = "Al-Onaizan, Yaser and Bansal, Mohit and Chen, Yun-Nung",
+    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2024",
+    month     = nov,
+    year      = "2024",
+    address   = "Miami, Florida, USA",
+    publisher = "Association for Computational Linguistics",
+    url       = "https://aclanthology.org/2024.findings-emnlp.965/",
+    doi       = "10.18653/v1/2024.findings-emnlp.965",
+    pages     = "16542--16552",
 }
 ```
