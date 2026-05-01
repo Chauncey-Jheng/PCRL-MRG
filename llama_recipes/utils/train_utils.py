@@ -644,6 +644,10 @@ def evaluation_conditional_gen(model,train_config, eval_dataloader, local_rank, 
 
     with MemoryTrace() as memtrace:
         for step, batch in enumerate(tqdm(eval_dataloader,colour="green", desc="Eval Epoch", dynamic_ncols=True)):
+            if train_config.max_eval_step > 0 and step >= train_config.max_eval_step:
+                if not train_config.enable_fsdp or local_rank == 0:
+                    print("max eval steps reached, stopping evaluation, total_eval_steps: ", step)
+                break
 
             for key in batch.keys():
                 if train_config.enable_fsdp:

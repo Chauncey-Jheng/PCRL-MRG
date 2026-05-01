@@ -1,0 +1,57 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and runtime files
+*.log
+*.out
+*.err
+nohup.out
+wandb/
+runs/
+logs/
+
+# Training outputs and checkpoints
+checkpoints/
+outputs/
+output/
+results/
+PEFT_Result/
+baseline_LLM_MRG_v*/
+PCRL_smoke_test/
+
+# Large model/data artifacts
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.pkl
+*.pkl.gz
+*.npy
+*.npz
+
+# Local editor and tool state
+.vscode/
+.idea/
+.codex
+.codex/
+
+# OS files
+.DS_Store
+Thumbs.db

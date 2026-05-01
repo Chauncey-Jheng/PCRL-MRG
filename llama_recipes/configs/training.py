@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 @dataclass
 class train_config:
-    model_name: str="/home/bjutcv/data/zcx/llama3/Meta-Llama-3-8B-Instruct"
+    model_name: str=""
     peft_model_name: str = "peft_model_best"
     tokenizer_name: str=None
     enable_fsdp: bool=False
@@ -33,9 +33,22 @@ class train_config:
     test_batch_size: int=1
     dataset = "samsum_dataset"
     dataset_version = "v0.0.1"
+    visual_features_dir: str = ""
+    split_dir: str = ""
+    sample_id_key: str = "id"
+    visual_token_count: int = 24
+    mrg_prompt: str = ""
+    coef_seg: float = 1.0
+    coef_local: float = 1.0
+    coef_global: float = 1.0
+    coef_caption_loss: float = 1.0
+    coef_image_loss: float = 1.0
+    bert_model_name: str = "bert-base-multilingual-uncased"
+    seg_output_dir: str = ""
+    origin_img_dir: str = ""
     peft_method: str = "lora" # None, llama_adapter (Caution: llama_adapter is currently not supported with FSDP)
     use_peft: bool=False
-    output_dir: str = "/home/bjutcv/data/zcx/llama3/Meta-Llama-3-8B-Instruct-Lora"
+    output_dir: str = "outputs"
     freeze_layers: bool = False
     num_freeze_layers: int = 1
     quantization: bool = False

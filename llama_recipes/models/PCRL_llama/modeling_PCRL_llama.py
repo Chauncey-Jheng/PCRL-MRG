@@ -41,6 +41,7 @@ from torch.nn.parameter import Parameter
 import json
 import gzip
 import pickle
+from pathlib import Path
 
 
 import cv2
@@ -54,7 +55,7 @@ from scipy.ndimage import zoom
 #Similarly, each entity has a corresponding entity description text, which can be mapped to which of the 24 images
 #Concatenate the entity description text of the same image together and remove duplicate text
 #In this way, we obtained text descriptions corresponding to 24 images
-#Extract features from 24 images using a shared downsampling layer with dimensions of 24 * 14 * 14 * 2048
+#Extract features from 24 images using a shared downsampling layer with dimensions of 24 * patch_h * patch_w * 1024
 #Generate segmentation maps for 24 images using a shared segmentation head
 #Transform 24 image features into corresponding visual embeddings using a shared visual embedding layer
 #Convert the text features corresponding to 24 images into text embeddings using a shared text embedding layer
@@ -203,32 +204,37 @@ class PCRLLlamaModel(nn.Module):
         self.pad_token_id = self.stop_token_id # or -1
         self.pad_token_id_bert = 0
         self.context_length = train_config.context_length
-        self.save_peft_model_name = "peft_model_lora_adapter.pth"
+        self.train_config = train_config
+        self._missing_mask_warning_count = 0
 
         self.projection_dim_local = 512
         self.projection_dim_global = 512
+        self.visual_feature_dim = 1024
 
-        with open('/home/bjutcv/data/zcx/llama3/CTRG_SAM_SEG_dataset/splits/train.json', 'r') as file:
+        if not train_config.split_dir:
+            raise ValueError("PCRLLlamaModel requires --split_dir to point to the SAM/SEG split JSON directory.")
+        split_dir = Path(train_config.split_dir)
+        with (split_dir / "train.json").open("r", encoding="utf-8") as file:
              self.train_data_json = json.load(file)
 
-        with open('/home/bjutcv/data/zcx/llama3/CTRG_SAM_SEG_dataset/splits/test.json', 'r') as file:
+        with (split_dir / "test.json").open("r", encoding="utf-8") as file:
              self.test_data_json = json.load(file)
         
-        with open('/home/bjutcv/data/zcx/llama3/CTRG_SAM_SEG_dataset/splits/validation.json', 'r') as file:
+        with (split_dir / "validation.json").open("r", encoding="utf-8") as file:
              self.validation_data_json = json.load(file)        
 
         ## local branch ####################################
-        self.local_res = self._make_res_layer(2048,2048,BasicConvBlock,2,2,2)
+        self.local_res = self._make_res_layer(self.visual_feature_dim,self.visual_feature_dim,BasicConvBlock,2,2,2)
         self.local_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.local_visual_projector = nn.Linear(2048,4096)
+        self.local_visual_projector = nn.Linear(self.visual_feature_dim,4096)
         self.local_visual_embed = nn.Linear(4096, self.projection_dim_local)
         self.local_text_embed = nn.Linear(4096, self.projection_dim_local)
         self.local_text_embed_bert = nn.Linear(768, self.projection_dim_global)
-        self.local_seg = self._make_seg_layer(2048, 2048)
+        self.local_seg = self._make_seg_layer(self.visual_feature_dim, self.visual_feature_dim)
 
         ## global_branch ####################################
         self.global_visual_projector = nn.Sequential(
-            nn.Linear(2048,4096),
+            nn.Linear(self.visual_feature_dim,4096),
             nn.Linear(4096,4096),
         )
         self.global_avg_pool = nn.AdaptiveMaxPool1d(1)
@@ -246,12 +252,6 @@ class PCRLLlamaModel(nn.Module):
         self.seg_alignment = SegAlignment()
         self.local_alignment = LocalAlignment(self.coef_caption_loss,self.coef_image_loss)
         self.global_alignment = GlobalAlignment(self.coef_caption_loss,self.coef_image_loss)
-
-        # textual encoder ####################################
-        self.bert_tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
-        self.bert_encoder =  BertModel.from_pretrained(
-            "bert-base-multilingual-uncased", 
-            ).to("cuda")
 
         # language model #####################################
         self.language_model = LlamaForCausalLM.from_pretrained(
@@ -295,24 +295,35 @@ class PCRLLlamaModel(nn.Module):
     def _prepare_visual_feature_data(self, sample_id):
         '''
         Take the preprocessed visual data based on the sample ID
-        The size of the returned batch_image_feature-local is [24,14,142048]
-        The size of batch_image_feature_global is [24,2048]
+        The size of the returned batch_image_feature_local is [24,16,16,1024]
+        The size of batch_image_feature_global is [24,1024]
         '''
         batch_image_feature_local = []
         batch_image_feature_global = []
+        if not self.train_config.visual_features_dir:
+            raise ValueError("PCRLLlamaModel requires --visual_features_dir to point to the PCRL feature directory.")
         for i in range(len(sample_id)):
             id = int(sample_id[i])
-            visual_features_dir_path = "/home/bjutcv/data/zcx/dataset/CTRG-Brain/feature/"
-            image_feature_global_path = visual_features_dir_path + "fc/" + str(id) +".npy"
-            image_feature_local_path = visual_features_dir_path + "att/" + str(id) +".npz"
+            image_feature_global_path = os.path.join(self.train_config.visual_features_dir, "pooler_output", str(id) + ".npz")
+            image_feature_local_path = os.path.join(self.train_config.visual_features_dir, "last_hidden_state", str(id) + ".npz")
             cuda = torch.device('cuda:0')
-            image_feature_global = torch.from_numpy(np.load(image_feature_global_path)).to(cuda)
+            npz_file = np.load(image_feature_global_path)
+            image_feature_global = torch.from_numpy(npz_file["pooler_output"]).to(cuda)
             batch_image_feature_global.append(image_feature_global)
             
             npz_file = np.load(image_feature_local_path)
-            arrays = {key: npz_file[key] for key in npz_file.files}
-            tensors = {key: torch.tensor(value).to(cuda) for key, value in arrays.items()}
-            image_feature_local = tensors["feat"]
+            image_feature_local = torch.from_numpy(npz_file["last_hidden_state"]).to(cuda)
+            if image_feature_local.dim() == 3:
+                patch_count = image_feature_local.shape[1] - 1
+                patch_size = int(patch_count ** 0.5)
+                if patch_size * patch_size != patch_count:
+                    raise ValueError(
+                        f"Cannot reshape last_hidden_state patches for sample {id}: "
+                        f"expected a square patch count, got {patch_count}."
+                    )
+                image_feature_local = image_feature_local[:, 1:, :].reshape(
+                    image_feature_local.shape[0], patch_size, patch_size, image_feature_local.shape[-1]
+                )
             batch_image_feature_local.append(image_feature_local)
         batch_image_feature_local = torch.stack(batch_image_feature_local, dim=0).to(cuda)
         batch_image_feature_global = torch.stack(batch_image_feature_global, dim=0).to(cuda)
@@ -320,8 +331,12 @@ class PCRLLlamaModel(nn.Module):
     
     def visualize_seg_mask(self, sample_id, logits_seg, batch_masks):
         cursor = 0
-        save_seg_dir = "/home/bjutcv/data/zcx/llama3/CTRG_SAM_SEG_dataset/pred_gt_seg_mask"
-        origin_img_dir = "/home/bjutcv/data/zcx/dataset/CTRG-Brain/samples/"
+        if not self.train_config.seg_output_dir:
+            raise ValueError("PCRLLlamaModel requires --seg_output_dir before visualizing segmentation masks.")
+        if not self.train_config.origin_img_dir:
+            raise ValueError("PCRLLlamaModel requires --origin_img_dir before visualizing segmentation masks.")
+        save_seg_dir = self.train_config.seg_output_dir
+        origin_img_dir = self.train_config.origin_img_dir
 
         for i in range(len(sample_id)):
             id = int(sample_id[i])
@@ -406,9 +421,15 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
             masks_list = []
             for m_path in masks_path:
                 # Open the segmentation mask corresponding to the image
-                with gzip.open(m_path, 'rb') as f:
-                    mask_data = pickle.load(f)
-                    masks_list.append(mask_data)
+                if os.path.exists(m_path):
+                    with gzip.open(m_path, 'rb') as f:
+                        mask_data = pickle.load(f)
+                else:
+                    if self._missing_mask_warning_count < 5:
+                        print(f"Warning: missing segmentation mask {m_path}; using an all-zero mask.")
+                    self._missing_mask_warning_count += 1
+                    mask_data = np.zeros((512, 512), dtype=np.uint8)
+                masks_list.append(mask_data)
             batch_seg_masks += masks_list
 
         batch_image_feature_for_alignment = torch.stack(batch_image_feature_for_alignment, dim=0).to(cuda)
@@ -553,7 +574,8 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         final_attention_mask = torch.zeros(
             batch_size, max_embed_dim, dtype=attention_mask.dtype, device=inputs_embeds.device
         )
-        if labels is not None:
+        merge_labels = labels is not None and labels.shape == input_ids.shape
+        if merge_labels:
             final_labels = torch.full(
                 (batch_size, max_embed_dim), self.ignore_index, dtype=input_ids.dtype, device=input_ids.device
             )
@@ -571,7 +593,7 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         # we need to index copy on [0, 577, 578, 579] for the text and [1:576] for the image features
         final_embedding[batch_indices, text_to_overwrite] = inputs_embeds[batch_indices, non_image_indices]
         final_attention_mask[batch_indices, text_to_overwrite] = attention_mask[batch_indices, non_image_indices]
-        if labels is not None:
+        if merge_labels:
             final_labels[batch_indices, text_to_overwrite] = labels[batch_indices, non_image_indices]
 
         # 5. Fill the embeddings corresponding to the images. Anything that is still zeros needs filling
@@ -594,7 +616,7 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
 
         final_embedding[batch_indices, indices_to_mask] = 0
 
-        if labels is None:
+        if not merge_labels:
             final_labels = None
 
         return final_embedding, final_attention_mask, final_labels, position_ids
@@ -622,19 +644,19 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         sample_id = sample_id.squeeze(1).tolist()
         image_feature_local, image_feature_global = self._prepare_visual_feature_data(sample_id)
 
-        # The local visual features are further processed by a ResNet layer, where the visual features are [4,24,14,14,2048]
-        # It needs to be converted into [4,24,2048,14,14] first
+        # The local visual features are further processed by a ResNet layer, where the visual features are [B,24,H,W,1024]
+        # It needs to be converted into [B,24,1024,H,W] first
         image_feature_local = image_feature_local.permute(0,1,4,2,3)
         
         # Selectors, use sample_id to retrieve data for local alignment and SEG alignment
-        # local_image_feat_for_align: [batchsize_local, 2048, 14, 14]
+        # local_image_feat_for_align: [batchsize_local, 1024, H, W]
         # local_summary_ids: [batchsize_local, -1]
         # batch_masks: [batchsize_local, 512, 512]
         local_image_feat_for_align, local_summary_ids, batch_masks, local_summary_att_masks = self._prepare_local_alignment_batch(image_feature_local, sample_id)
         # local_image_feat_for_align, local_summary_ids, batch_masks, local_summary_att_masks = self._prepare_local_alignment_batch_bert(image_feature_local, sample_id)
         
         # Processing local visual features
-        # Downsampling, [batchsize_local, 2048, 7, 7]
+        # Downsampling, [batchsize_local, 1024, H/2, W/2]
         local_image_feat_for_align = self.local_res(local_image_feat_for_align)
 
         # Obtain the predicted segmentation mask
@@ -648,7 +670,7 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         # Calculate loss using predicted segmentation mask and real mask
         seg_loss = self.seg_alignment(logits_seg, batch_masks)
 
-        # [batchsize_local, 2048]
+        # [batchsize_local, 1024]
         local_image_feat_for_align = self.local_avg_pool(local_image_feat_for_align).squeeze(-1).squeeze(-1)
         # [batchsize_local, 4096]
         local_image_feat_for_align = self.local_visual_projector(local_image_feat_for_align)
@@ -677,7 +699,7 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         # Calculate the loss of local alignment
         local_loss = self.local_alignment(local_image_embed_for_align, local_text_embed_for_align)
 
-        # Embedding global visual features, originally [batchsize, 24, 2048]
+        # Embedding global visual features, originally [batchsize, 24, 1024]
         # [batchsize, 24, 4096]
         global_image_feat = self.global_visual_projector(image_feature_global)
         # [batchsize, 4096]
@@ -712,10 +734,13 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
 
         #Prepare visual features for the next step
         #Local visual features
-        local_image_feature_for_mrg = image_feature_local.reshape(-1,2048,14,14)
+        local_image_feature_for_mrg = image_feature_local.reshape(
+            -1, image_feature_local.shape[2], image_feature_local.shape[3], image_feature_local.shape[4]
+        )
         local_image_feature_for_mrg = self.local_res(local_image_feature_for_mrg)
         local_image_feature_for_mrg = self.local_avg_pool(local_image_feature_for_mrg).squeeze(-1).squeeze(-1)
-        local_image_feature_for_mrg = self.local_visual_projector(local_image_feature_for_mrg).reshape(-1,24,4096)
+        image_slice_count = image_feature_local.shape[1]
+        local_image_feature_for_mrg = self.local_visual_projector(local_image_feature_for_mrg).reshape(-1,image_slice_count,4096)
         # Global Visual Features
         global_image_feature_for_mrg = global_image_feat
 
@@ -935,18 +960,21 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         sample_id = sample_id.squeeze(1).tolist()
         image_feature_local, image_feature_global = self._prepare_visual_feature_data(sample_id)
 
-        # The local visual features are further processed by a ResNet layer, where the visual features are [4,24,14,14,2048]
-        # It needs to be converted into [4,24,2048,14,14] first
+        # The local visual features are further processed by a ResNet layer, where the visual features are [B,24,H,W,1024]
+        # It needs to be converted into [B,24,1024,H,W] first
         image_feature_local = image_feature_local.permute(0,1,4,2,3)
 
-        # Embedding global visual features, originally [batchsize, 24, 2048]
+        # Embedding global visual features, originally [batchsize, 24, 1024]
         # The visual projection is [batchsize, 24, 4096]
         global_image_feat = self.global_visual_projector(image_feature_global)
 
-        local_image_feature_for_mrg = image_feature_local.reshape(-1,2048,14,14)
+        local_image_feature_for_mrg = image_feature_local.reshape(
+            -1, image_feature_local.shape[2], image_feature_local.shape[3], image_feature_local.shape[4]
+        )
         local_image_feature_for_mrg = self.local_res(local_image_feature_for_mrg)
         local_image_feature_for_mrg = self.local_avg_pool(local_image_feature_for_mrg).squeeze(-1).squeeze(-1)
-        local_image_feature_for_mrg = self.local_visual_projector(local_image_feature_for_mrg).reshape(-1,24,4096)
+        image_slice_count = image_feature_local.shape[1]
+        local_image_feature_for_mrg = self.local_visual_projector(local_image_feature_for_mrg).reshape(-1,image_slice_count,4096)
 
         global_image_feature_for_mrg = global_image_feat
 
@@ -1092,7 +1120,8 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
     def _reorder_cache(self, *args, **kwargs):
         return self.language_model._reorder_cache(*args, **kwargs)
     
-    def save_pretrained(self, save_directory):
+    def save_pretrained(self, save_directory, peft_model_name="peft_model_lora_adapter", epoch=None):
+        # No need extension name
         if not os.path.exists(save_directory):
             os.makedirs(save_directory)
 
@@ -1101,13 +1130,20 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
         # projector_params = {name: param for name, param in self.named_parameters() if 'projector' in name}
         lora_params = {name: param for name, param in self.named_parameters() if 'lora' in name}
         save_params = {**local_params, **global_params, **lora_params}
-        save_path = os.path.join(save_directory, self.save_peft_model_name)
+        if epoch == None:
+            save_path = os.path.join(save_directory, peft_model_name + ".pth")
+        else:
+            save_path = os.path.join(save_directory, peft_model_name + "_epoch" + str(epoch) + ".pth")
 
         torch.save(save_params, save_path)
         print(f"Model weights saved to {save_path}")
     
-    def from_pretrained(self, load_directory):
-        load_params = torch.load(os.path.join(load_directory, self.save_peft_model_name))
+    def from_pretrained(self, load_directory, peft_model_name="peft_model_lora_adapter", epoch=None):
+        if epoch == None:
+            load_path = os.path.join(load_directory, peft_model_name + ".pth")
+        else:
+            load_path = os.path.join(load_directory, peft_model_name + "_epoch" + str(epoch) + ".pth")
+        load_params = torch.load(load_path)
         self.load_state_dict(load_params, strict=False)
 
 

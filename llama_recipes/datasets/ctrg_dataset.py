@@ -1,23 +1,28 @@
+import json
 import datasets
+from pathlib import Path
 
 def get_preprocessed_ctrg(train_config, dataset_config, tokenizer, split):
 
-    text_json_dataset_path = "/home/bjutcv/data/zcx/Datasets/CTRG-Brain/report_json_v0.0.0/splits/"
+    if not dataset_config.split_dir:
+        raise ValueError("ctrg_dataset requires --split_dir to point to the dataset split JSON directory.")
+    if not dataset_config.mrg_prompt:
+        raise ValueError("ctrg_dataset requires --mrg_prompt to define the report-generation prompt template.")
+    text_json_dataset_path = Path(dataset_config.split_dir) / f"{split}.json"
 
-    dataset = datasets.load_dataset(text_json_dataset_path, split=split)
+    with text_json_dataset_path.open("r", encoding="utf-8") as f:
+        dataset = datasets.Dataset.from_list(json.load(f))
 
     # 这里的24代表CT中24个层面的视觉特征
-    visual_prompt = "<|image_feature|>" * 24
+    visual_prompt = "<|image_feature|>" * int(dataset_config.visual_token_count)
     '''
     Prompt 修改需要到视觉融合层中修改对应视觉特征注入的位置，在文件modelling_llama.py中，LlamaModel方法
     '''
-    prompt_MRG = (
-        f"[Img]{{visual_prompt}}[/Img][MRG]详细地用中文描述给定的多张脑CT图片并生成一份中文的脑CT报告。"
-    )
+    prompt_MRG = dataset_config.mrg_prompt
 
     def apply_prompt_template(sample):
         return {
-            "sample_id": sample["sample_id"],
+            "sample_id": sample[dataset_config.sample_id_key],
             "prompt": prompt_MRG.format(visual_prompt=visual_prompt),
             "findings": sample["findings"],
             "impression": sample["impression"],

@@ -41,7 +41,6 @@ class ViTLlamaModel(nn.Module):
         self.stop_token_id = 128001
         self.pad_token_id = self.stop_token_id # or -1
         self.context_length = train_config.context_length
-        self.save_peft_model_name = "peft_model_lora_adapter.pth"
         self.train_config = train_config
 
         self.multi_modal_projector = nn.Sequential(nn.Linear(1024, 4096), nn.Linear(4096,4096))
@@ -97,20 +96,15 @@ class ViTLlamaModel(nn.Module):
         返回的batch_image_feature_local的size为[24,257,1024]
         batch_image_feature_global的size为[24,1024]
         '''
-        if self.train_config.dataset in ("ctrg_dataset", "ctrg_vqa_dataset"):
-            dataset_name = "CTRG-Brain"
-        elif self.train_config.dataset == "bctchr_dataset":
-            dataset_name = "bct_chr"
+        if not self.train_config.visual_features_dir:
+            raise ValueError("ViTLlamaModel requires --visual_features_dir to point to the pre-extracted ViT feature directory.")
         batch_image_feature_local = []
         batch_image_feature_global = []
         for i in range(len(sample_id)):
             id = int(sample_id[i])
             # 根据id，获取npy和npz格式的视觉特征数据
-            # visual_features_dir_path = "/home/bjutcv/data/zcx/Datasets/CTRG-Brain/vit_img_features/"
-            # visual_features_dir_path = "/home/bjutcv/data/zcx/Datasets/bct_chr/vit_img_features/"
-            visual_features_dir_path = os.path.join("/home/bjutcv/data/zcx/Datasets/", dataset_name, "vit_img_features/")
-            image_feature_global_path = visual_features_dir_path + "pooler_output/" + str(id) +".npz"
-            image_feature_local_path = visual_features_dir_path + "last_hidden_state/" + str(id) +".npz"
+            image_feature_global_path = os.path.join(self.train_config.visual_features_dir, "pooler_output", str(id) + ".npz")
+            image_feature_local_path = os.path.join(self.train_config.visual_features_dir, "last_hidden_state", str(id) + ".npz")
             # device = torch.device('cuda:0')
 
             npz_file = np.load(image_feature_global_path)

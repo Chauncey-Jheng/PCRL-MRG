@@ -8,4 +8,3 @@
 
 # modified by zcx
 from .ctrg_dataset import get_preprocessed_ctrg as get_ctrg_dataset
-from .ctrg_dataset import get_preprocessed_ctrg_v0_1_0 as get_ctrg_dataset_v0_1_0

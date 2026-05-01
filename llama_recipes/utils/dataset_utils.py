@@ -50,6 +50,7 @@ def get_custom_dataset(train_config, dataset_config, tokenizer, split: str):
 DATASET_PREPROC = {
     "custom_dataset": get_custom_dataset,
     "ctrg_dataset": get_ctrg_dataset,
+    "ctrg_sam_seg_dataset": get_ctrg_dataset,
 }
 
 
