@@ -3,7 +3,7 @@ set -euo pipefail
 PYTHON_BIN=/home/bjutcv/anaconda3/envs/zcx_llama/bin/python
 PROJECT_DIR=/home/bjutcv/data/zcx/PCRL-MRG
 MODEL_NAME=/home/bjutcv/data/zcx/models/Meta-Llama-3-8B-Instruct
-OUTPUT_DIR=${PROJECT_DIR}/PCRL_v0.0.3_bert
+OUTPUT_DIR=${PROJECT_DIR}/PCRL_v0.0.1
 SPLIT_DIR=${PROJECT_DIR}/dataset/CTRG_SAM_SEG_dataset/splits
 VISUAL_FEATURES_DIR=/home/bjutcv/data/zcx/datasets/CTRG-Brain/vit_img_features
 ORIGIN_IMG_DIR=/home/bjutcv/data/zcx/datasets/CTRG-Brain/samples

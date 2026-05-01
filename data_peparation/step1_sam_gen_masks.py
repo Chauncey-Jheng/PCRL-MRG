@@ -67,7 +67,7 @@ mask_generator = SamAutomaticMaskGenerator(
 with open('CTRG_dataset/train_part_1.json', 'r') as file:
     data = json.load(file)
 
-seg_save_dir = "./CTRG_dataset/mask/"
+seg_save_dir = "/home/bjutcv/data/zcx/datasets/CTRG-Brain/mask"
 
 for sample in tqdm(data):
     images = set(sample["images"])

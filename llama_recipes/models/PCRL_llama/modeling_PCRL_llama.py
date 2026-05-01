@@ -425,8 +425,7 @@ You are a helpful AI assistant for summarizing brain CT report.<|eot_id|><|start
                     with gzip.open(m_path, 'rb') as f:
                         mask_data = pickle.load(f)
                 else:
-                    if self._missing_mask_warning_count < 5:
-                        print(f"Warning: missing segmentation mask {m_path}; using an all-zero mask.")
+                    print(f"Warning: missing segmentation mask {m_path}; using an all-zero mask.")
                     self._missing_mask_warning_count += 1
                     mask_data = np.zeros((512, 512), dtype=np.uint8)
                 masks_list.append(mask_data)

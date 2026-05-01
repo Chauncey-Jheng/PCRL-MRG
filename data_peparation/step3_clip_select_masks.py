@@ -33,8 +33,8 @@ layer_num_entities ={0: ['上颌窦', '筛窦', '蝶窦', '第四脑室', '脑�
     6: ['额叶', '半卵圆中心', '顶叶', '大脑镰', '脑沟', '脑室', '脑实质', '中线'],
     7: ['大脑镰', '脑回', '顶叶', '放射冠', '额叶', '脑沟']}
 
-mask_base_dir = "/home/bjutcv/data/zcx/xtuner/CTRG_dataset/mask"
-seg_image_base_dir = "/home/bjutcv/data/zcx/xtuner/test_ct_image_seg"
+mask_base_dir = "/home/bjutcv/data/zcx/datasets/CTRG-Brain/mask"
+seg_image_base_dir = "/home/bjutcv/data/zcx/datasets/CTRG-Brain/ct_image_seg"
 
 new_data = []
 for sample in tqdm(data):
