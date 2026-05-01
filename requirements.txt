@@ -1,0 +1,42 @@
+# PCRL-MRG runtime dependencies.
+# Python 3.11 is recommended by the project README.
+#
+# For CUDA training, install a PyTorch build matching your CUDA runtime if the
+# default wheel is not suitable, for example:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+torch>=2.1
+torchvision>=0.16
+
+# HuggingFace / LLaMA fine-tuning stack
+transformers>=4.40
+accelerate>=0.29
+peft>=0.10
+bitsandbytes>=0.43
+datasets>=2.18
+tokenizers>=0.19
+safetensors>=0.4
+sentencepiece>=0.2
+protobuf>=4.25
+
+# CLI, config, and training utilities
+fire>=0.6
+PyYAML>=6.0
+packaging>=23.0
+setuptools>=68.0
+psutil>=5.9
+tqdm>=4.65
+
+# Image processing, SAM/CLIP data preparation, and feature extraction
+numpy>=1.24,<2.0
+scipy>=1.10
+Pillow>=10.0
+opencv-python>=4.8
+pycocotools>=2.0
+
+# Evaluation and metric plotting
+jieba>=0.42
+matplotlib>=3.7
+
+# Optional experiment tracking; only used when use_wandb=True.
+wandb>=0.16
