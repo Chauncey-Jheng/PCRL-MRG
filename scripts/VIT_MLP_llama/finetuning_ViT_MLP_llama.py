@@ -131,7 +131,7 @@ def main(**kwargs):
         )
 
     use_cache = False if train_config.enable_fsdp else None
-    image_token_index = tokenizer.encode("<|image_feature|>")[0]
+    image_token_index = tokenizer.encode("<|image_feature|>",add_special_tokens=False)[0]
     visual_language_model = ViTLlamaModel(train_config, use_cache, tokenizer, image_token_index, kwargs, wandb_run).cuda()
     print_model_size(visual_language_model, train_config, rank if train_config.enable_fsdp else 0)
 
