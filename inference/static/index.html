@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PCRL-MRG 脑CT报告生成</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>脑CT报告生成推理系统</h1>
+  <p class="subtitle">PCRL-MRG · ViT-MLP-LLaMA3-8B（LoRA） · 上传 24 张脑CT切片，自动生成中文报告</p>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="panel-head">
+      <h2>1. 提供CT切片</h2>
+      <div class="mode-status" id="countStatus">已选择 0 / 24 张</div>
+    </div>
+
+    <div class="dropzone" id="dropzone" tabindex="0">
+      <p>拖拽或点击选择恰好 <strong>24 张</strong>CT切片图像（对应8个层面、每层3张）</p>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden />
+    </div>
+
+    <div class="thumbs" id="thumbs"></div>
+
+    <div class="actions">
+      <button id="generateBtn" class="btn primary" disabled>生成报告</button>
+      <button id="clearBtn" class="btn ghost" disabled>清空</button>
+      <button id="demoBtn" class="btn ghost">使用示例CT</button>
+    </div>
+    <p class="hint" id="demoHint"></p>
+  </section>
+
+  <section class="panel" id="resultPanel" hidden>
+    <div class="panel-head">
+      <h2>2. 生成结果</h2>
+      <div class="mode-status" id="statusBadge"></div>
+    </div>
+    <div class="result-grid">
+      <div class="result-card">
+        <h3>模型生成报告</h3>
+        <p class="report-text" id="reportText">—</p>
+      </div>
+      <div class="result-card" id="groundTruthCard" hidden>
+        <h3>数据集参考报告（示例CT真实标注，仅供对比）</h3>
+        <p class="report-text" id="groundTruthText">—</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="healthBadge">检测模型状态…</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

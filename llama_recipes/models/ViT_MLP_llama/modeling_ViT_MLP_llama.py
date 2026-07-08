@@ -501,6 +501,19 @@ class ViTLlamaModel(nn.Module):
                 attention_mask = torch.cat((extended_attention_mask, attention_mask[:, -target_length:]), dim=1)
                 position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
 
+        return self._generate_tokens(
+            inputs_embeds, input_ids, past_key_values, max_gen_len, temperature, top_p,
+            echo, use_cache, output_attentions, output_hidden_states, return_dict,
+        )
+
+    def _generate_tokens(
+        self, inputs_embeds, input_ids, past_key_values, max_gen_len, temperature, top_p,
+        echo, use_cache, output_attentions, output_hidden_states, return_dict,
+    ):
+        """Token-by-token nucleus-sampling loop shared by generate() (dataset sample_id
+        lookup) and generate_from_image_features() (live-inference, features passed in
+        directly) — the loop itself doesn't care where inputs_embeds came from.
+        """
         bsz = len(inputs_embeds)
         min_prompt_len = min(len(t) for t in inputs_embeds)
         max_prompt_len = max(len(t) for t in inputs_embeds)
@@ -539,7 +552,7 @@ class ViTLlamaModel(nn.Module):
 
             logits = outputs.logits
             past_key_values = outputs.past_key_values
-            
+
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
@@ -591,6 +604,42 @@ class ViTLlamaModel(nn.Module):
             # out_logprobs.append(probs)
         # return (out_tokens, out_logprobs if logprobs else None)
         return out_tokens
+
+    def generate_from_image_features(
+        self,
+        image_features_global: torch.FloatTensor,
+        input_ids: torch.LongTensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        max_gen_len: int = 256,
+        temperature: float = 0.6,
+        top_p: float = 0.9,
+        echo: bool = False,
+        use_cache: bool = True,
+    ):
+        """Live-inference entry point for deployed serving.
+
+        generate() always resolves image features via `_get_image_features_by_id`,
+        i.e. it only works for samples that already have pre-extracted .npz features
+        on disk under `visual_features_dir`. A freshly deployed inference server has
+        no such sample_id — features are computed on the fly (e.g. via CLIP) from
+        whatever images the caller just submitted — so this method takes the global
+        image features directly instead of looking them up.
+
+        image_features_global: (num_images, 1024) CLIP pooler_output features, in the
+        same order as the `<|image_feature|>` tokens in input_ids's prompt.
+        """
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        inputs_embeds = self.get_input_embeddings()(input_ids)
+        selected_image_feature = image_features_global.reshape((-1, 1, 1024))
+        projected_image_features = self.multi_modal_projector(selected_image_feature)
+        inputs_embeds, attention_mask, _, _ = self._merge_input_ids_with_image_features(
+            projected_image_features, inputs_embeds, input_ids, attention_mask, None
+        )
+        return self._generate_tokens(
+            inputs_embeds, input_ids, None, max_gen_len, temperature, top_p,
+            echo, use_cache, None, None, True,
+        )
 
     def _reorder_cache(self, *args, **kwargs):
         return self.language_model._reorder_cache(*args, **kwargs)

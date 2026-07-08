@@ -1,0 +1,4 @@
+# Populated by ../../prepare_demo_sample.py from real dataset imagery — never commit
+# these, only the script that generates them.
+*.jpg
+meta.json

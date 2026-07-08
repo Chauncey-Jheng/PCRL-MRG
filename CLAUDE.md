@@ -358,6 +358,52 @@ Generated Chinese brain CT reports → pycocoevalcap metrics
 
 ---
 
+## Standalone Inference Deployment (`inference/`)
+
+A persistent FastAPI service for serving the fine-tuned ViT-MLP-LLaMA checkpoint outside
+the train/eval pipeline, plus a small web UI for trying it interactively:
+
+```
+inference/
+├── engine.py                # Loads tokenizer + ViTLlamaModel + LoRA weights + CLIP
+│                             # vision encoder once; extracts CLIP features from live
+│                             # images and generates a report.
+├── server.py                # FastAPI app: POST /api/generate (multipart upload of
+│                             # exactly 24 CT images), GET /api/health, plus
+│                             # /api/demo + /api/demo/generate for the bundled demo case.
+├── prepare_demo_sample.py   # One-time per-host script that copies one CTRG test-split
+│                             # sample's 24 images into static/sample/ for the UI's
+│                             # "try demo" button. Not run automatically — see its
+│                             # docstring; the copied images are gitignored.
+├── run_server.sh            # Standalone launcher (uvicorn), independent of
+│                             # central-control's own Node-wrapper supervision.
+└── static/                  # Plain HTML/JS/CSS frontend (upload UI + result view).
+```
+
+Key design point: `ViTLlamaModel.generate()` (see
+`llama_recipes/models/ViT_MLP_llama/modeling_ViT_MLP_llama.py`) resolves visual features
+by looking up pre-extracted `.npz` files via a dataset `sample_id` — that only works for
+samples already baked into the CTRG splits. A deployed server instead receives raw
+images over HTTP with no `sample_id`, so the model gained a second entry point,
+`generate_from_image_features()`, that takes CLIP global features directly; both it and
+the original `generate()` share the same token-by-token sampling loop (factored out into
+`_generate_tokens()`).
+
+The model was trained with exactly 24 `<|image_feature|>` tokens per prompt (8 anatomical
+layers × 3 images), so `/api/generate` requires exactly 24 uploaded images — anything
+else is rejected with a 400 before it reaches the model (a count mismatch there raises a
+low-level `ValueError` inside `_merge_input_ids_with_image_features`, not a useful error).
+
+Default model/checkpoint paths in `server.py` are hardcoded to this project's known
+deployment host (see "Hardcoded Paths" above) and overridable via `PCRL_MODEL_NAME`,
+`PCRL_CLIP_MODEL`, `PCRL_CHECKPOINT_DIR`, `PCRL_PEFT_MODEL_NAME` env vars.
+
+This service is also wired into `central-control` (the reverse-proxying supervisor in
+the sibling `central-control` repo) as the `pcrl-mrg` child app — see
+`central-control/child-apps/pcrl-mrg/server.js`.
+
+---
+
 ## Notes for AI Assistants
 
 1. **The directory is spelled `data_peparation`** (not `data_preparation`) — this is the actual directory name and should not be corrected without explicit user request.
