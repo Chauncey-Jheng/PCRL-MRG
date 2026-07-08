@@ -80,7 +80,7 @@ demoBtn.addEventListener('click', async () => {
   demoBtn.disabled = true;
   demoHint.textContent = '正在加载示例CT…';
   try {
-    const resp = await fetch('/api/demo');
+    const resp = await fetch('api/demo');
     const data = await resp.json();
     if (!data.available) {
       demoHint.textContent = '示例CT尚未部署在本机（需管理员运行 prepare_demo_sample.py）。';
@@ -147,18 +147,18 @@ async function runRequest(url, options) {
 
 generateBtn.addEventListener('click', () => {
   if (mode === 'demo') {
-    runRequest('/api/demo/generate', { method: 'POST' });
+    runRequest('api/demo/generate', { method: 'POST' });
     return;
   }
   if (selectedFiles.length !== REQUIRED_COUNT) return;
   const formData = new FormData();
   selectedFiles.forEach((f) => formData.append('images', f));
-  runRequest('/api/generate', { method: 'POST', body: formData });
+  runRequest('api/generate', { method: 'POST', body: formData });
 });
 
 async function checkHealth() {
   try {
-    const resp = await fetch('/api/health');
+    const resp = await fetch('api/health');
     const data = await resp.json();
     if (data.status === 'ready') {
       healthBadge.textContent = `模型已就绪（视觉token数=${data.visual_token_count}）`;

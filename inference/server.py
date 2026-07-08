@@ -132,7 +132,11 @@ def demo_info():
         return {"available": False}
     return {
         "available": True,
-        "images": [f"/sample/{name}" for name in images],
+        # Relative (no leading slash): the page is served under central-control's
+        # /apps/pcrl-mrg/ proxy prefix, and a leading-slash URL would resolve against
+        # the site root instead of that prefix (see the same issue with app.js's
+        # fetch() calls).
+        "images": [f"sample/{name}" for name in images],
         "ground_truth": meta.get("ground_truth", {}),
     }
 
