@@ -18,9 +18,10 @@ The system automatically generates Chinese brain CT reports by fine-tuning LLaMA
 6. [Data Preparation Pipeline](#data-preparation-pipeline)
 7. [Training](#training)
 8. [Evaluation](#evaluation)
-9. [Configuration Reference](#configuration-reference)
-10. [Hardcoded Paths — Action Required](#hardcoded-paths--action-required)
-11. [Citation](#citation)
+9. [Standalone Inference Service and Web UI](#standalone-inference-service-and-web-ui)
+10. [Configuration Reference](#configuration-reference)
+11. [Hardcoded Paths — Action Required](#hardcoded-paths--action-required)
+12. [Citation](#citation)
 
 ---
 
@@ -295,6 +296,129 @@ Evaluation uses a bundled `pycocoevalcap` module (`llama_recipes/pycocoevalcap/`
 Two metric scripts are available:
 - `llama_recipes/utils/metrics_for_chs_mrg.py` — for Chinese reports (default)
 - `llama_recipes/utils/metrics_for_eng_mrg.py` — for English reports
+
+---
+
+## Standalone Inference Service and Web UI
+
+The `inference/` directory contains a standalone FastAPI service and a static
+browser UI. It loads the fine-tuned ViT-MLP-LLaMA model and CLIP encoder once at
+startup, accepts exactly 24 CT slices, extracts visual features online, and
+returns a generated Chinese report. The same process serves both the API and UI.
+
+### 1. Prerequisites
+
+Install the project dependencies and make the following resources available on
+the deployment machine:
+
+- Meta-Llama-3-8B-Instruct base model
+- CLIP-ViT-Large-patch14 model
+- a PCRL-MRG checkpoint directory containing the selected `.pth` checkpoint
+- one CUDA-capable GPU; the current inference engine calls CUDA directly
+
+The server-specific dependencies (`fastapi`, `uvicorn`, and
+`python-multipart`) are included in `requirements.txt`.
+
+### 2. Configure and start the service
+
+`inference/run_server.sh` accepts configuration through environment variables,
+so the deployment does not require source-code path edits:
+
+```bash
+export PCRL_PYTHON=/path/to/python
+export PCRL_MODEL_NAME=/path/to/Meta-Llama-3-8B-Instruct
+export PCRL_CLIP_MODEL=/path/to/clip-vit-large-patch14
+export PCRL_CHECKPOINT_DIR=/path/to/checkpoint-directory
+export PCRL_PEFT_MODEL_NAME=peft_model_best
+export CHILD_HOST=0.0.0.0
+export CHILD_PORT=8700
+
+bash inference/run_server.sh
+```
+
+The process may take one or two minutes to load the models. Check readiness with:
+
+```bash
+curl http://127.0.0.1:8700/api/health
+```
+
+A ready response looks like:
+
+```json
+{"status": "ready", "visual_token_count": 24}
+```
+
+If model loading fails, the same endpoint returns `status: "error"` and the
+failure detail; also check the server's standard output for a traceback.
+
+### 3. Use the browser interface
+
+Open `http://<server-address>:8700/` in a browser. Then:
+
+1. Drag or select exactly 24 CT slice images in their intended anatomical order.
+2. Confirm the counter shows `24 / 24`.
+3. Select **生成报告** and wait for the Chinese report.
+4. Use **清空** before choosing another case.
+
+The model was trained with 24 images representing eight anatomical levels (three
+slices per level). Sending a different number returns HTTP 400. Images are decoded
+as RGB by the server; use common browser-compatible formats such as JPEG or PNG.
+
+### 4. Optional built-in demo case
+
+The repository does not redistribute real CTRG images. On a host that already
+has CTRG data, provision one test-split sample once:
+
+```bash
+python inference/prepare_demo_sample.py \
+  --sample-id 5924 \
+  --split-file /path/to/test.json
+```
+
+The `images` entries in the selected split file must point to files that exist on
+that host. The script copies 24 images and reference-report metadata to the
+gitignored `inference/static/sample/` directory. Restarting the API is not required.
+The UI's **使用示例CT** button then loads the images, generates a report, and shows
+the dataset reference report for comparison.
+
+### 5. Call the API directly
+
+The generation endpoint is `POST /api/generate` with a multipart field named
+`images` repeated exactly 24 times. With zero-padded, correctly ordered filenames:
+
+```bash
+files=(/path/to/case/*.jpg)
+((${#files[@]} == 24)) || { echo "expected 24 images"; exit 1; }
+curl_args=()
+for image in "${files[@]}"; do
+  curl_args+=(-F "images=@${image}")
+done
+curl -X POST http://127.0.0.1:8700/api/generate "${curl_args[@]}"
+```
+
+It returns `{"report": "..."}`. Interactive API documentation is also available
+at `http://<server-address>:8700/docs`.
+
+### 6. Deploy behind a reverse proxy
+
+All frontend asset and API URLs are relative, so the UI can be hosted below a URL
+prefix. For example, an Nginx proxy that strips `/pcrl-mrg/` is:
+
+```nginx
+location /pcrl-mrg/ {
+    proxy_pass http://127.0.0.1:8700/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+}
+```
+
+Open `https://<your-domain>/pcrl-mrg/` after reloading Nginx. Restrict access and
+configure TLS/authentication as appropriate before exposing patient images outside
+a trusted network. This project is a research demonstration and is not a clinical
+diagnostic service.
 
 ---
 

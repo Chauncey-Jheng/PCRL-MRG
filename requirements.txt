@@ -40,3 +40,8 @@ matplotlib>=3.7
 
 # Optional experiment tracking; only used when use_wandb=True.
 wandb>=0.16
+
+# Standalone inference API and browser UI
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
