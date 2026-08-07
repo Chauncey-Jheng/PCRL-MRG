@@ -11,15 +11,16 @@ The system automatically generates Chinese brain CT reports by fine-tuning LLaMA
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Requirements](#requirements)
-3. [Pre-trained Models](#pre-trained-models)
-4. [Dataset Setup](#dataset-setup)
-5. [Data Preparation Pipeline](#data-preparation-pipeline)
-6. [Training](#training)
-7. [Evaluation](#evaluation)
-8. [Configuration Reference](#configuration-reference)
-9. [Hardcoded Paths — Action Required](#hardcoded-paths--action-required)
-10. [Citation](#citation)
+2. [Reproduction Quick Start](#reproduction-quick-start)
+3. [Requirements](#requirements)
+4. [Pre-trained Models](#pre-trained-models)
+5. [Dataset Setup](#dataset-setup)
+6. [Data Preparation Pipeline](#data-preparation-pipeline)
+7. [Training](#training)
+8. [Evaluation](#evaluation)
+9. [Configuration Reference](#configuration-reference)
+10. [Hardcoded Paths — Action Required](#hardcoded-paths--action-required)
+11. [Citation](#citation)
 
 ---
 
@@ -45,9 +46,45 @@ Each CT sample contains **24 slices** covering 8 anatomical layers (3 images per
 
 ---
 
+## Reproduction Quick Start
+
+The minimal workflow for reproducing the ViT-MLP-LLaMA baseline is:
+
+```bash
+git clone https://github.com/Chauncey-Jheng/PCRL-MRG.git
+cd PCRL-MRG
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Download CTRG, then make the bundled 24-slice manifest portable.
+python data_peparation/prepare_image_manifest.py \
+  --dataset-root /path/to/CTRG-Brain \
+  --check
+
+# Edit the dataset/model paths listed below, then extract visual features.
+python data_peparation/get_visual_feature/clip_vit_1024.py
+
+# Fine-tune and evaluate.
+bash scripts/VIT_MLP_llama/finetuning_CTRG_MRG.sh
+bash scripts/VIT_MLP_llama/test_CTRG_MRG.sh
+```
+
+Before launching a long run, verify that the base model, generated manifest,
+visual feature directory, and output directory all point to your local paths.
+The original experiments use seed `3578` in the example training command.
+
+---
+
 ## Requirements
 
-No `requirements.txt` is included. Install the following core packages:
+A `requirements.txt` is included. Install it with:
+
+```bash
+pip install -r requirements.txt
+```
+
+To install the core packages manually instead:
 
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
@@ -83,8 +120,37 @@ data_peparation/segment_anything/sam_vit_h_4b8939.pth
 ## Dataset Setup
 
 1. Download the CTRG dataset from https://github.com/tangyuhao2016/CTRG
-2. Place the raw images and annotation file (`origin_samples.json`) under a local directory, e.g. `/data/CTRG_dataset/`
-3. Pre-processed annotation files are already included in `dataset/` for reference
+2. Place the raw images under `<CTRG_ROOT>/samples/<sample_id>/*.jpg` and the annotation file under your local CTRG directory.
+3. Pre-processed annotations are included in `dataset/` for reference.
+4. Generate a local, portable copy of the 24-slice image manifest:
+
+```bash
+python data_peparation/prepare_image_manifest.py \
+  --dataset-root /path/to/CTRG-Brain \
+  --output /path/to/CTRG-Brain/total_image_list_final.json \
+  --check
+```
+
+### About `total_image_list_final.json`
+
+`dataset/total_image_list_final.json` is included in this repository. It maps
+each of the 6,001 CTRG sample IDs to the 24 slices selected in the original
+experiments. Its paths record the authors' machine and therefore cannot be used
+directly on another system. `prepare_image_manifest.py` preserves the original
+slice selection, replaces only the dataset root, and optionally checks that all
+24 files for every sample exist. It does **not** redistribute CTRG images; those
+must be downloaded separately under the CTRG license.
+
+The generated JSON has this schema:
+
+```json
+{
+  "sample_id": [
+    "/path/to/CTRG-Brain/samples/sample_id/slice_01.jpg",
+    "... 23 more paths ..."
+  ]
+}
+```
 
 ---
 
